@@ -1,0 +1,8 @@
+{
+  "name": "devtools-error-triage",
+  "private": true,
+  "type": "module",
+  "scripts": {"start": "node --experimental-strip-types src/error_triage.ts", "test": "node --experimental-strip-types --test src/error_triage.test.ts", "typecheck": "tsc --noEmit"},
+  "dependencies": {"zod": "^3.23.0"},
+  "devDependencies": {"@types/node": "^22.0.0", "typescript": "^5.6.0"}
+}
