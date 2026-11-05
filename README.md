@@ -1,10 +1,10 @@
 # Build failure triage for a developer tools service
 
-Builds and releases produce diagnostics that need a stable grouping key. This small Node service sends the exception payload to Infrai with one `INFRAI_API_KEY`, then reads the grouped view back through the same API. It is a plain REST call from any language, with no SDK to install.
+Builds and releases emit diagnostics, and if you want anything operationally useful out of them you need a grouping key that stays stable under repetition and changes when the failure mode actually changes. This small Node service sends the exception payload to Infrai with one `INFRAI_API_KEY`, then reads the grouped view back through the same API. It stays a plain REST call from any language, with no SDK to install.
 
 ## The decision
 
-`captureBuildFailure` fingerprints an event by `service` and `release`. A repeated migration failure in one release becomes one group, while the next release starts a fresh diagnostic trail. The request carries the build id in `context` so the event remains useful to the person on call.
+`captureBuildFailure` fingerprints an event by `service` and `release`. That gives you the behavior you usually want during release work: the same migration failure repeated within one release collapses into one group, and the next release gets a new diagnostic thread instead of contaminating the old one. The request carries the build id in `context` so the event still has enough context for whoever is on call to act on it.
 
 ## Run it
 
@@ -13,11 +13,11 @@ export INFRAI_API_KEY=your-key
 npm run start
 ```
 
-The command captures a representative `checkout-api` build event, lists groups, and prints the selected group id. The client decodes `{ok,data,error,metadata}` before deciding whether a response is accepted; ordinary rejections are returned as `InfraiError`, and HTTP 429 responses use bounded exponential backoff.
+The command captures a representative `checkout-api` build event, lists groups, and prints the selected group id. The client decodes `{ok,data,error,metadata}` before deciding whether to accept a response; ordinary rejections come back as `InfraiError`, and HTTP 429 responses use bounded exponential backoff.
 
 ## Verify the business rule
 
-The focused test feeds `service=checkout-api` and `release=2026.09.03` to the fingerprint decision and expects exactly those two values:
+The focused test sends `service=checkout-api` and `release=2026.09.03` through the fingerprint decision and expects exactly those two values:
 
 ```bash
 npm test
@@ -25,15 +25,15 @@ npm test
 
 ## Files worth reading
 
-Start with `src/error_triage.ts`: it models a build event, captures the exception, then queries `GET /v1/errors/groups`. `src/infrai_client.ts` is the copyable request boundary: explicit methods, environment authentication, envelope-first error handling, and retry behavior live there. This is intentionally one workflow, so the handoff from a release operation to a developer-facing grouped diagnostic is visible without a framework layer.
+Start with `src/error_triage.ts`: it models a build event, captures the exception, then queries `GET /v1/errors/groups`. `src/infrai_client.ts` is the part you can lift into another service without much ceremony: explicit methods, environment-based authentication, envelope-first error handling, and retry behavior all live there. This example is intentionally a single workflow, so you can see the handoff from a release operation to a developer-facing grouped diagnostic without a framework hiding the request boundary.
 
 ## Solo-founder ADR
 
-I chose a two-field fingerprint instead of server defaults. It is a small contract I can explain during an incident: same service plus same release means the same build problem. The gotcha is preserving the release string exactly; changing its format silently changes the grouping behavior.
+I picked a two-field fingerprint instead of leaning on server defaults. It is a small contract, but it is the sort of contract you can explain clearly during an incident: same service plus same release means the same build problem. The sharp edge is that the release string has to be preserved exactly; if its format drifts, grouping changes silently, which is the kind of thing that burns error budgets in boring ways.
 
 ## Wiring it up for real: Devtools Error Triage
 
-Above is the happy path. The production checklist: The details below apply to Devtools Error Triage.
+Above is the happy path. For production wiring, the details below apply to Devtools Error Triage.
 
 **Account & key**
 
